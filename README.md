@@ -6,9 +6,9 @@ Time interval between two inactiveness slots : If the user has not moved the pho
 
 In case, the time gap exceeds 15 mins, then these two 1 hour slots will be considered as two different blocks of inactiveness.
 
-The app has two options 
-1. Sample data 
-2. Actual data
+The app has two options;
+- Actual Values
+- Sample Values
 
 The above mentioned design is nothing but the actual data of the app, while in sample data, I have changed 1 hour to 1minute and 15 minutes to 15 seconds, for the sake of fast testing.
 
