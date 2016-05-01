@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Sleep_Monitor</string>
+    <string name="hide_logs">Hide Sleep Logs</string>
+    <string name="show_logs">Show Sleep Logs"</string>
+    <string name="stop">Stop Tracking</string>
+    <string name="start">Start Tracking</string>
+</resources>

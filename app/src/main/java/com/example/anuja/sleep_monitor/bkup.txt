@@ -1,0 +1,189 @@
+package com.example.anuja.sleep_monitor;
+
+import android.app.Activity;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.os.Bundle;
+import android.util.FloatMath;
+import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ListView;
+
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+
+import java.util.Queue;
+import com.google.common.collect.EvictingQueue;
+
+public class SleepMonitorMainActivity extends Activity {
+
+    private static SensorManager sensorMan;
+    private static Sensor accelerometer;
+    private static SensorEventListener mSensorEventListener;
+
+    private float[] mGravity;
+    private float mAccel;
+    private float mAccelCurrent;
+    private float mAccelLast;
+
+    private Button mStartStopMonitoring;
+    private Button mShowHideLogs;
+    private ListView mListView;
+    private SleepLogAdapter mAdapter;
+
+    private long mMinStillTimePeriod = 1*60*1000; //1 min
+    private long mMinMovementTimeConsidered = 15*1000;//15 sec
+    
+    private long mPreviousTime = 0;
+    private long mCurrentTime = 0;
+
+    private String mPreviousTimeStr;
+    private String mCurrentTimeStr;
+
+    private StillTimePeriod mPrevStillTime;
+    private StillTimePeriod mCurrStillTime;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_sleep_monitor_main);
+        Log.v("Hello", "on create of activity");
+        mStartStopMonitoring = (Button) findViewById(R.id.start_stop_monitoring);
+        mShowHideLogs = (Button) findViewById(R.id.show_sleep_log);
+        mListView = (ListView) findViewById(R.id.sleep_log_list);
+
+        sensorMan = (SensorManager)getSystemService(SENSOR_SERVICE);
+        accelerometer = sensorMan.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mAccel = 0.00f;
+        mAccelCurrent = SensorManager.GRAVITY_EARTH;
+        mAccelLast = SensorManager.GRAVITY_EARTH;
+
+        mAdapter = new SleepLogAdapter(this);
+        mListView.setAdapter(mAdapter);
+
+        mShowHideLogs.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if(mShowHideLogs.getText().equals("Show Sleep Logs")) {
+                    mShowHideLogs.setText("Hide Sleep Logs");
+                    mListView.setVisibility(View.VISIBLE);
+                } else if(mShowHideLogs.getText().equals("Hide Sleep Logs")) {
+                    mShowHideLogs.setText("Show Sleep Logs");
+                    mListView.setVisibility(View.GONE);
+                }
+            }
+        });
+
+        Queue<Integer> fifo = EvictingQueue.create(2); 
+        fifo.add(1); 
+        fifo.add(2); 
+        fifo.add(3); 
+        System.out.println(fifo);
+
+        mStartStopMonitoring.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if(mStartStopMonitoring.getText().equals("Start")) {
+                    mStartStopMonitoring.setText("Stop");
+                    sensorMan.registerListener(mSensorEventListener, accelerometer, SensorManager.SENSOR_DELAY_UI);
+                    mPreviousTime = System.currentTimeMillis();
+                    mPreviousTimeStr = getCurrentTime();
+                } else if(mStartStopMonitoring.getText().equals("Stop")) {
+                    mStartStopMonitoring.setText("Start");
+                    Log.v("Hello", "stoping ?? why ??");
+                    sensorMan.unregisterListener(mSensorEventListener);
+                }
+            }
+        });
+
+
+        mSensorEventListener = new SensorEventListener() {
+            @Override
+            public void onSensorChanged(SensorEvent event) {
+                if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
+                    mGravity = event.values.clone();
+
+                    float x = mGravity[0];
+                    float y = mGravity[1];
+                    float z = mGravity[2];
+                    mAccelLast = mAccelCurrent;
+                    mAccelCurrent = FloatMath.sqrt(x * x + y * y + z * z);
+                    float delta = mAccelCurrent - mAccelLast;
+                    mAccel = mAccel * 0.9f + delta;
+
+                    if(mAccel > 3){
+                        if(mPreviousTime != 0) {
+                            mCurrentTime = System.currentTimeMillis();
+                            mCurrentTimeStr = getCurrentTime();
+                            long diff = mCurrentTime - mPreviousTime;
+                            Log.v("Hello", "diff - "+diff);
+                            Log.v("Hello", "time = "+getCurrentTime());
+                            Log.v("Hello", "STRING  = "+getDurationBreakdown(diff));
+                            if(diff >= mMinStillTimePeriod) {
+                                if(mPrevStillTime == null) {
+                                    mPrevStillTime =  new StillTimePeriod(mPreviousTimeStr, mCurrentTimeStr, diff, mPreviousTime, mCurrentTime);
+                                } else {
+                                    mCurrStillTime =  new StillTimePeriod(mPreviousTimeStr, mCurrentTimeStr, diff, mPreviousTime, mCurrentTime);
+                                    if(mCurrStillTime.getStartTime() - mPrevStillTime.getEndTime()  <= mMinMovementTimeConsidered) {
+                                        Log.v("Hello", "yes it is less then 15 seconds ..");
+                                        long newDiff = mPrevStillTime.getStillPeriod() + mCurrStillTime.getStillPeriod() 
+                                            + mPrevStillTime.getEndTime() - mCurrStillTime.getStartTime();
+                                        mPrevStillTime = new StillTimePeriod(mPrevStillTime.getStartTimeStr(), 
+                                            mCurrStillTime.getEndTimeStr(), newDiff, mPrevStillTime.getStartTime(), 
+                                            mCurrStillTime.getEndTime());
+                                        mCurrStillTime = null;
+                                    } else {
+                                        Log.v("Hello", "15 seconds se jada difference hai to yaha aao SAVE KARO PREV");
+                                        mPrevStillTime = null;
+                                    }
+                                }
+                                if(mPrevStillTime != null)
+                                    Log.v("Hello", "mPrevStillTime object - start str = "+
+                                        mPrevStillTime.getStartTimeStr()+", end str = "+
+                                        mPrevStillTime.getEndTimeStr()+", start tm = "+
+                                        mPrevStillTime.getStartTime()+", end tm = "+
+                                        mPrevStillTime.getEndTime()+", period = "+
+                                        mPrevStillTime.getStillPeriod()+", "
+                                        );
+                                //prev still time is null
+                                //set  prev still time
+                                //else set current still time 
+                                    //and check if current start -  prev end < 15 mins then - prev = new (start of prev, end of curre, curr diff+prev diff+cuurstart-prevend)
+                                                //else - put in 10 sized array and set prev = null angain. 
+                            } else {
+                                Log.v("Hello", "1 min se kam hai to yaha aao");
+                            }
+                        }
+                        mPreviousTime = System.currentTimeMillis();
+                        mPreviousTimeStr = getCurrentTime();
+                    }
+                }
+            }
+
+            @Override
+            public void onAccuracyChanged(Sensor sensor, int accuracy) {
+            }
+        };
+    }
+
+    public void onDestroy() {
+        super.onDestroy();
+        Log.v("Hello", "bhag ja raha");
+    }
+
+    private String getDurationBreakdown(long millis) {
+        long seconds=(millis/1000)%60;
+        long minutes=(millis/(1000*60))%60;
+        long hours=(millis/(1000*60*60))%24;
+        return hours+":"+minutes+":"+seconds;
+    }
+
+    private String getCurrentTime() {
+        Calendar cal = Calendar.getInstance();
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy hh:mm:ss a");
+        return ""+sdf.format(cal.getTime());
+    } 
+}
